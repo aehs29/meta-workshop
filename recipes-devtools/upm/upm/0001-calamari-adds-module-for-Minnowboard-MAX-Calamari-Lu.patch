@@ -1,0 +1,727 @@
+From c6e20f8998ead1855335e99a5bd7e0f34cb3733c Mon Sep 17 00:00:00 2001
+From: Alejandro Hernandez <alejandro.hernandez@linux.intel.com>
+Date: Tue, 29 Dec 2015 17:39:17 -0600
+Subject: [PATCH] calamari: adds module for Minnowboard MAX Calamari Lure
+
+Signed-off-by: Alejandro Hernandez <alejandro.hernandez@linux.intel.com>
+---
+ src/calamari/CMakeLists.txt   |   8 +
+ src/calamari/calamari.cxx     | 399 ++++++++++++++++++++++++++++++++++++++++++
+ src/calamari/calamari.h       | 118 +++++++++++++
+ src/calamari/jsupm_calamari.i |   8 +
+ src/calamari/pyupm_calamari.i |   8 +
+ src/calamari/rgbled.cxx       |  31 ++++
+ src/calamari/rgbled.h         |  87 +++++++++
+ 7 files changed, 659 insertions(+)
+ create mode 100644 src/calamari/CMakeLists.txt
+ create mode 100644 src/calamari/calamari.cxx
+ create mode 100644 src/calamari/calamari.h
+ create mode 100644 src/calamari/jsupm_calamari.i
+ create mode 100644 src/calamari/pyupm_calamari.i
+ create mode 100644 src/calamari/rgbled.cxx
+ create mode 100644 src/calamari/rgbled.h
+
+diff --git a/src/calamari/CMakeLists.txt b/src/calamari/CMakeLists.txt
+new file mode 100644
+index 0000000..f0e4ee5
+--- /dev/null
++++ b/src/calamari/CMakeLists.txt
+@@ -0,0 +1,8 @@
++set (libname "calamari")
++set (libdescription "Calamari Lure Module")
++set (module_src ${libname}.cxx rgbled.cxx)
++set (module_h ${libname}.h rgbled.h)
++upm_module_init()
++#add_executable (calamari.cxx)
++#include_directories (${PROJECT_SOURCE_DIR}/src/calamari)
++#target_link_libraries (calamari ${CMAKE_THREAD_LIBS_INIT})
+diff --git a/src/calamari/calamari.cxx b/src/calamari/calamari.cxx
+new file mode 100644
+index 0000000..1a9d734
+--- /dev/null
++++ b/src/calamari/calamari.cxx
+@@ -0,0 +1,399 @@
++#include "calamari.h"
++// #include <string>
++// #include <stdexcept>
++#include <stdlib.h>
++
++using namespace upm;
++
++//Constructor
++calamari::calamari(){
++}
++
++//Destructor
++calamari::~calamari(){
++}
++
++
++
++
++// rgbled::rgbled(int gpio){
++//   //This should go on rgbled class
++//   if(!(m_gpio = mraa_gpio_init(gpio))){
++//  throw std::invalid_argument(std::string(__FUNCTION__) +
++//                              ": mraa_gpio_init(led) failed, invalid pin?");
++//  return;
++//   }
++//   mraa_gpio_dir(m_gpio,MRAA_GPIO_OUT);
++
++// }
++// rgbled::~rgbled(){
++//   mraa_result_t error;
++//   error = mraa_gpio_close(m_gpio);
++//   if(error != MRAA_SUCCESS){
++//  mraa_result_print(error);
++//   }
++// }
++
++// bool rgbled::turnOn(){
++//   return mraa_gpio_write(m_gpio,1);
++// }
++// bool rgbled::turnOff(){
++//   return mraa_gpio_write(m_gpio,0);
++// }
++
++
++
++led::led(int gpio){
++  //This should go on rgbled class
++  if(!(m_gpio = mraa_gpio_init(gpio))){
++	throw std::invalid_argument(std::string(__FUNCTION__) +
++								": mraa_gpio_init(led) failed, invalid pin?");
++	return;
++  }
++  mraa_gpio_dir(m_gpio,MRAA_GPIO_OUT);
++
++}
++led::~led(){
++    mraa_result_t error;
++    error = mraa_gpio_close(m_gpio);
++    if(error != MRAA_SUCCESS){
++        mraa_result_print(error);
++    }
++}
++
++bool led::turnOn(){
++    return mraa_gpio_write(m_gpio,1);
++}
++bool led::turnOff(){
++    return mraa_gpio_write(m_gpio,0);
++}
++
++
++
++button::button(int gpio){
++  if(!(m_gpio = mraa_gpio_init(gpio))){
++	throw std::invalid_argument(std::string(__FUNCTION__) +
++								": mraa_gpio_init(button) failed, invalid pin?");
++	return;
++  }
++  mraa_gpio_dir(m_gpio,MRAA_GPIO_IN);
++
++}
++button::~button(){
++    mraa_result_t error;
++    error = mraa_gpio_close(m_gpio);
++    if(error != MRAA_SUCCESS){
++        mraa_result_print(error);
++    }
++}
++
++bool button::read(){
++    return mraa_gpio_read(m_gpio);
++}
++
++led_pwm::led_pwm(int pin){
++  m_pwm = mraa_pwm_init(pin);
++  if(m_pwm == NULL){
++	return;
++  }
++  mraa_pwm_period_us(m_pwm,200);
++  mraa_pwm_enable(m_pwm,1);
++  mraa_pwm_write(m_pwm,0.9);
++}
++led_pwm::~led_pwm(){
++  mraa_result_t error;
++  error = mraa_pwm_close(m_pwm);
++  if(error != MRAA_SUCCESS){
++	mraa_result_print(error);
++  }
++}
++
++bool led_pwm::pwm_set(float new_value){
++  pwm_value = new_value;
++  return led_pwm::pwm_write();
++}
++bool led_pwm::pwm_write(){
++  return mraa_pwm_write(m_pwm, pwm_value);
++}
++bool led_pwm::pwm_increase(float increment){
++  // return mraa_pwm_write(m_pwm,value);
++  pwm_value = pwm_value + increment;
++  return led_pwm::pwm_write();
++}
++bool led_pwm::pwm_decrease(float decrement){
++  pwm_value = pwm_value - decrement;
++  return led_pwm::pwm_write();
++  // return mraa_pwm_write(m_pwm,value); 
++}
++
++bool led_pwm::pwm_w(float val){
++  mraa_pwm_write(m_pwm,val);
++  return 0;
++}
++
++display::display(){
++  
++  if(!(m_gpio_clear = mraa_gpio_init(16))){
++	throw std::invalid_argument(std::string(__FUNCTION__) +
++								": mraa_gpio_init(led) failed, invalid pin?");
++	return;
++  }
++  mraa_gpio_dir(m_gpio_clear,MRAA_GPIO_OUT);
++
++  if(!(m_gpio_latch = mraa_gpio_init(18))){
++	throw std::invalid_argument(std::string(__FUNCTION__) +
++								": mraa_gpio_init(led) failed, invalid pin?");
++	return;
++  }
++  mraa_gpio_dir(m_gpio_latch,MRAA_GPIO_OUT);
++
++  if(!(m_gpio_data = mraa_gpio_init(20))){
++	throw std::invalid_argument(std::string(__FUNCTION__) +
++								": mraa_gpio_init(led) failed, invalid pin?");
++	return;
++  }
++  mraa_gpio_dir(m_gpio_data,MRAA_GPIO_OUT);
++
++  if(!(m_gpio_clk = mraa_gpio_init(25))){
++	throw std::invalid_argument(std::string(__FUNCTION__) +
++								": mraa_gpio_init(led) failed, invalid pin?");
++	return;
++  }
++  mraa_gpio_dir(m_gpio_clk,MRAA_GPIO_OUT);
++
++
++  // Clear Everything
++  mraa_gpio_write(m_gpio_clk,0);
++  mraa_gpio_write(m_gpio_latch,0);
++  mraa_gpio_write(m_gpio_data,0);
++  mraa_gpio_write(m_gpio_clear,0);
++
++  display::clear();
++  display::reset();
++}
++
++display::~display(){
++  // Missing TODO
++}
++
++bool display::tick(){
++  mraa_gpio_write(m_gpio_clk,1);
++  mraa_gpio_write(m_gpio_clk,0);
++  return 0;
++}
++
++bool display::clear(){
++  mraa_gpio_write(m_gpio_clear,1);
++  mraa_gpio_write(m_gpio_clear,0);
++  mraa_gpio_write(m_gpio_clear,1);
++  return 0;
++}
++bool display::latch(){
++  mraa_gpio_write(m_gpio_latch,1);
++  mraa_gpio_write(m_gpio_latch,0);
++  mraa_gpio_write(m_gpio_latch,1);
++  return 0;
++}
++
++bool display::send(int value){
++  mraa_gpio_write(m_gpio_data,value);
++  display::tick();
++  return 0;
++}
++
++bool display::sendall(){
++  display::send(display_table.f_state);
++  display::send(display_table.c_state);
++  display::send(display_table.dp_state);
++  display::send(display_table.b_state);
++  display::send(display_table.a_state);
++  display::send(display_table.g_state);
++  display::send(display_table.e_state);
++  display::send(display_table.d_state);
++  display::latch();
++  return 0;
++}
++
++void display::reset(){
++  display_table.a_state=1;
++  display_table.b_state=1;
++  display_table.c_state=1;
++  display_table.d_state=1;
++  display_table.e_state=1;
++  display_table.f_state=1;
++  display_table.g_state=1;
++  display_table.dp_state=1;
++  display::sendall();
++}
++
++void display::reset_state(bool dp){
++  display_table.a_state=1;
++  display_table.b_state=1;
++  display_table.c_state=1;
++  display_table.d_state=1;
++  display_table.e_state=1;
++  display_table.f_state=1;
++  display_table.g_state=1;
++  if(dp==true)
++	display_table.dp_state=0;
++  else
++	display_table.dp_state=1;
++}
++
++bool display::set_value(char character){
++  // character=toupper(character)
++  switch (character){
++  case '0':
++  case 'D':
++	display_table.a_state=0;
++	display_table.b_state=0;
++	display_table.c_state=0;
++	display_table.d_state=0;
++	display_table.e_state=0;
++	display_table.f_state=0;
++	break;
++  case '1':
++	display_table.b_state=0;
++	display_table.c_state=0;
++	break;
++  case '2':
++	display_table.a_state=0;
++	display_table.b_state=0;
++	display_table.g_state=0;
++	display_table.e_state=0;
++	display_table.d_state=0;
++	break;
++  case '3':
++	display_table.a_state=0;
++	display_table.b_state=0;
++	display_table.g_state=0;
++	display_table.c_state=0;
++	display_table.d_state=0;
++	break;
++  case '4':
++	display_table.f_state=0;
++	display_table.g_state=0;
++	display_table.b_state=0;
++	display_table.c_state=0;
++	break;
++  case '5':
++	display_table.a_state=0;
++	display_table.f_state=0;
++	display_table.g_state=0;
++	display_table.c_state=0;
++	display_table.d_state=0; 
++	break;
++  case '6':
++	display_table.a_state=0;
++	display_table.f_state=0;
++	display_table.g_state=0;
++	display_table.c_state=0;
++	display_table.d_state=0;
++	display_table.e_state=0;
++	break;
++  case '7':
++	display_table.a_state=0;
++	display_table.b_state=0;
++	display_table.c_state=0;
++	break;
++  case 'B':
++  case '8':
++	display_table.a_state=0;
++	display_table.b_state=0;
++	display_table.c_state=0;
++	display_table.d_state=0;
++	display_table.e_state=0;
++	display_table.f_state=0;
++	display_table.g_state=0;
++	break;
++  case '9':
++	display_table.a_state=0;
++	display_table.f_state=0;
++	display_table.g_state=0;
++	display_table.b_state=0;
++	display_table.c_state=0; 
++	break;
++
++  case 'A':
++	display_table.a_state=0;
++	display_table.b_state=0;
++	display_table.c_state=0;
++	display_table.e_state=0;
++	display_table.f_state=0;
++	display_table.g_state=0;
++	break;
++
++  case 'C':
++	display_table.a_state=0;
++	display_table.f_state=0;
++	display_table.d_state=0;
++	display_table.e_state=0;
++	break;
++
++  case 'E':
++	display_table.a_state=0;
++	display_table.f_state=0;
++	display_table.g_state=0;
++	display_table.d_state=0;
++	display_table.e_state=0;
++	break;
++
++  case 'F':
++	display_table.a_state=0;
++	display_table.f_state=0;
++	display_table.g_state=0;
++	display_table.e_state=0;
++	break;
++	
++  default:
++	 throw std::invalid_argument(std::string(__FUNCTION__) +
++	                             ": Invalid Character!");
++	 return 1;	
++  }
++}
++
++bool display::write(char character){
++  
++  display::reset_state(false);
++  display::set_value(character);
++  display::sendall();
++  tmpchar = character;
++}
++
++bool display::write_dp(char character){
++  
++  display::reset_state(true);
++  display::set_value(character);
++  display::sendall();
++  tmpchar = character;
++}
++
++bool display::increase_count(){
++  if(isdigit(tmpchar)){
++	  int number = tmpchar - '0';
++	  if(++number>9)
++		number=0;
++	  tmpchar = number + '0';
++	  display::write_dp(tmpchar);
++	}
++	else{
++	  throw std::invalid_argument(std::string(__FUNCTION__) +
++								  ": Previous character was not a number!");
++	  return 1;	
++	}
++}
++
++bool display::decrease_count(){
++  if(isdigit(tmpchar)){
++	  int number = tmpchar - '0';
++	  if(--number<0)
++		number=9;
++	  tmpchar = number + '0';
++	  display::write_dp(tmpchar);
++	}
++	else{
++	  throw std::invalid_argument(std::string(__FUNCTION__) +
++								  ": Previous character was not a number!");
++	  return 1;	
++	}
++}
+diff --git a/src/calamari/calamari.h b/src/calamari/calamari.h
+new file mode 100644
+index 0000000..8a6121b
+--- /dev/null
++++ b/src/calamari/calamari.h
+@@ -0,0 +1,118 @@
++#pragma once
++
++/* #include <mraa/gpio.h> */
++/* #include "rgbled/rgbled.h" */
++//#include "rgbled.h"
++
++#include <mraa/pwm.h>
++#include <mraa/gpio.h>
++#include <string>
++#include <stdexcept>
++#include <ctype.h>
++
++
++
++namespace upm {
++
++  class led {
++   public:
++    led(int gpio);
++    ~led();
++    bool turnOn();
++    bool turnOff();
++   private:
++    mraa_gpio_context m_gpio;
++  };
++
++  class button {
++  public:
++    button(int gpio);
++    ~button();
++    bool read();
++  private:
++    mraa_gpio_context m_gpio;
++  };
++
++  class led_pwm {
++   public:
++    led_pwm(int gpio);
++    ~led_pwm();
++    bool pwm_increase(float increment);
++    bool pwm_decrease(float decrement);
++	bool pwm_write();
++	bool pwm_set(float new_value);
++	bool pwm_w(float val);
++	float pwm_value=0.0f;
++  private:
++    mraa_pwm_context m_pwm;
++
++  };
++
++  /* 7 Segment Display */
++  class display {
++   public:
++    display();
++    ~display();
++	void reset();
++	bool write(char character);		/* Massive Switch-case */
++	bool write_dp(char character);		/* Massive Switch-case */
++	bool increase_count();
++	bool decrease_count();
++   private:
++	bool set_value(char character);
++    bool clear();
++	bool latch();
++	bool tick();
++	bool sendall();
++	bool send(int value);
++	void reset_state(bool dp);
++	struct display_table { 
++	  int a_state;
++	  int b_state;
++	  int c_state;
++	  int d_state;
++	  int e_state;
++	  int f_state;
++	  int g_state;
++	  int dp_state;
++	} display_table;
++
++	char tmpchar;
++	mraa_gpio_context m_gpio_clear;
++	mraa_gpio_context m_gpio_latch;
++	mraa_gpio_context m_gpio_data;
++	mraa_gpio_context m_gpio_clk;
++  };
++  
++
++  /* class rgbled { */
++  /* public: */
++  /* 	rgbled(int gpio); */
++  /* 	~rgbled(); */
++  /* 	bool turnOn(); */
++  /* 	bool turnOff(); */
++  /* private: */
++  /* 	mraa_gpio_context m_gpio; */
++  /* }; */
++
++  
++  class calamari {
++  public:
++	led red = led (21);
++	led green = led (23);
++	led blue = led (26);
++	button btn1 = button (12);
++	button btn2 = button (10);
++	button btn3 = button (14);
++	led_pwm led1 = led_pwm(22);
++	led_pwm led2 = led_pwm(24);
++	display seg7 = display();
++	/* rgbled red = rgbled (21); */
++	/* rgbled green = rgbled (23); */
++	/* rgbled blue = rgbled (26); */
++	calamari();
++	~calamari();
++  private:
++  };
++
++}
+diff --git a/src/calamari/jsupm_calamari.i b/src/calamari/jsupm_calamari.i
+new file mode 100644
+index 0000000..807492a
+--- /dev/null
++++ b/src/calamari/jsupm_calamari.i
+@@ -0,0 +1,8 @@
++%module jsupm_calamari
++%include "../upm.i"
++
++%include "calamari.h"
++
++%{
++    #include "calamari.h"
++%}
+diff --git a/src/calamari/pyupm_calamari.i b/src/calamari/pyupm_calamari.i
+new file mode 100644
+index 0000000..91ac9b7
+--- /dev/null
++++ b/src/calamari/pyupm_calamari.i
+@@ -0,0 +1,8 @@
++%module pyupm_calamari
++%include "../upm.i"
++
++%include "calamari.h"
++
++%{
++    #include "calamari.h"
++%}
+diff --git a/src/calamari/rgbled.cxx b/src/calamari/rgbled.cxx
+new file mode 100644
+index 0000000..0074e82
+--- /dev/null
++++ b/src/calamari/rgbled.cxx
+@@ -0,0 +1,31 @@
++// #include "rgbled.h"
++// #include <string>
++// #include <stdexcept>
++
++
++// using namespace upm;
++
++// rgbled::rgbled(int gpio){
++//   //This should go on rgbled class
++//   if(!(m_gpio = mraa_gpio_init(gpio))){
++// 	throw std::invalid_argument(std::string(__FUNCTION__) +
++// 								": mraa_gpio_init(led) failed, invalid pin?");
++// 	return;
++//   }
++//   mraa_gpio_dir(m_gpio,MRAA_GPIO_OUT);
++
++// }
++// rgbled::~rgbled(){
++//   mraa_result_t error;
++//   error = mraa_gpio_close(m_gpio);
++//   if(error != MRAA_SUCCESS){
++// 	mraa_result_print(error);
++//   }
++// }
++
++// bool rgbled::turnOn(){
++//   return mraa_gpio_write(m_gpio,1);
++// }
++// bool rgbled::turnOff(){
++//   return mraa_gpio_write(m_gpio,0);
++// }
+diff --git a/src/calamari/rgbled.h b/src/calamari/rgbled.h
+new file mode 100644
+index 0000000..fffce59
+--- /dev/null
++++ b/src/calamari/rgbled.h
+@@ -0,0 +1,87 @@
++/* #pragma once */
++
++/* #include <mraa/gpio.h> */
++/* #include <string> */
++/* #include <stdexcept> */
++
++/* namespace upm { */
++
++/*   class rgbled { */
++/*   public: */
++/* 	rgbled(int gpio){ */
++/* 	  //This should go on rgbled class */
++/* 	  if(!(m_gpio = mraa_gpio_init(gpio))){ */
++/* 		throw std::invalid_argument(std::string(__FUNCTION__) + */
++/* 									": mraa_gpio_init(led) failed, invalid pin?"); */
++/* 		return; */
++/* 	  } */
++/* 	  mraa_gpio_dir(m_gpio,MRAA_GPIO_OUT); */
++/* 	} */
++/* 	~rgbled(){ */
++/* 	  mraa_result_t error; */
++/* 	  error = mraa_gpio_close(m_gpio); */
++/* 	  if(error != MRAA_SUCCESS){ */
++/* 		mraa_result_print(error); */
++/* 	  } */
++/* 	} */
++/* 	bool turnOn(){ */
++/* 	  return mraa_gpio_write(m_gpio,1); */
++/* 	} */
++/* 	bool turnOff(){ */
++/* 	  return mraa_gpio_write(m_gpio,0); */
++/* 	} */
++/*   private: */
++/* 	mraa_gpio_context m_gpio; */
++/*   }; */
++
++/* } */
++
++#pragma once
++
++#include <mraa/gpio.h>
++#include <string>
++#include <stdexcept>
++
++namespace upm {
++
++  class rgbled {
++  public:
++	rgbled(int gpio);
++	~rgbled();
++	bool turnOn();
++	bool turnOff();
++  private:
++	mraa_gpio_context m_gpio;
++  };
++
++}
++//#include "rgbled.h"
++
++
++
++using namespace upm;
++
++rgbled::rgbled(int gpio){
++  //This should go on rgbled class
++  if(!(m_gpio = mraa_gpio_init(gpio))){
++ throw std::invalid_argument(std::string(__FUNCTION__) +
++                             ": mraa_gpio_init(led) failed, invalid pin?");
++ return;
++  }
++  mraa_gpio_dir(m_gpio,MRAA_GPIO_OUT);
++
++}
++rgbled::~rgbled(){
++  mraa_result_t error;
++  error = mraa_gpio_close(m_gpio);
++  if(error != MRAA_SUCCESS){
++ mraa_result_print(error);
++  }
++}
++
++bool rgbled::turnOn(){
++  return mraa_gpio_write(m_gpio,1);
++}
++bool rgbled::turnOff(){
++  return mraa_gpio_write(m_gpio,0);
++}
+-- 
+2.6.4
+
